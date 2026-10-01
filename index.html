@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🐾 走廊小精靈 // 測速雷達究極版 🐾</title>
+    <style>
+        body {
+            background-color: #E3F2FD;
+            font-family: 'Microsoft JhengHei', 'Varela Round', sans-serif;
+            color: #455A64;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            background-color: #FFFFFF;
+            border: 3px dashed #90CAF9;
+            border-radius: 15px;
+            padding: 25px;
+            width: 90%;
+            max-width: 640px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-top: 20px;
+        }
+        .title-badge {
+            background-color: #90CAF9;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: bold;
+            display: inline-block;
+            margin-top: -40px;
+            margin-bottom: 15px;
+        }
+        .control-group {
+            margin-bottom: 12px;
+            font-weight: bold;
+        }
+        input[type="text"] {
+            width: calc(100% - 20px);
+            padding: 8px;
+            border: 2px solid #BBDEFB;
+            border-radius: 8px;
+            font-family: monospace;
+            margin-top: 5px;
+        }
+        input[type="range"] {
+            width: 100%;
+            accent-color: #42A5F5;
+        }
+        input[type="number"] {
+            width: 70px;
+            padding: 5px;
+            border: 2px solid #90CAF9;
+            border-radius: 5px;
+            text-align: center;
+            color: #455A64;
+            font-weight: bold;
+        }
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            margin-top: 15px;
+            background: #FFF3E0;
+            padding: 10px;
+            border-radius: 10px;
+        }
+        .btn {
+            background-color: #81C784;
+            color: white;
+            border: none;
+            border-radius: 15px;
+            padding: 12px;
+            font-size: 18px;
+            font-weight: bold;
+            width: 100%;
+            cursor: pointer;
+            margin-top: 15px;
+        }
+        .btn.stop { background-color: #E57373; }
+        .btn:disabled { background-color: #CFD8DC; cursor: not-allowed; }
+        
+        #canvasOutput {
+            width: 100%;
+            max-width: 640px;
+            border: 3px dashed #90CAF9;
+            border-radius: 15px;
+            margin-top: 20px;
+            background-color: #FFF;
+        }
+        
+        /* 隱藏用於背後運算的元件 */
+        #videoElement, #ipcamElement, #hiddenCanvas { display: none; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="title-badge">✨ 雷達設定與魔法區 ✨</div>
+        
+        <div class="control-group">
+            <label>📱 鏡頭來源 (本機鏡頭填 0，平板請填 IP 網址)</label>
+            <input type="text" id="camSource" value="0" placeholder="例如: http://192.168.1.100:8080/video">
+        </div>
+
+        <div class="control-group" style="display: flex; justify-content: space-between; align-items: center; background: #F5F5F5; padding: 10px; border-radius: 10px;">
+            <span>📏 請看畫面左上角紅線 (100像素)<br>這條紅線在現實中大約是幾公尺？</span>
+            <input type="number" id="calibInput" value="1.5" step="0.1" min="0.1">
+        </div>
+
+        <div class="control-group">
+            <label id="speedLabel">🚨 抓拍速限 (大於此時速才拍照): 15 km/h</label>
+            <input type="range" id="speedSlider" min="5" max="30" value="15">
+        </div>
+        
+        <div class="control-group">
+            <label id="trigLabel">⏱️ 防誤判 (連續超速幾次才拍): 3</label>
+            <input type="range" id="trigSlider" min="1" max="10" value="3">
+        </div>
+
+        <label class="checkbox-label">
+            <input type="checkbox" id="powerCheck" style="width: 20px; height: 20px; margin-right: 10px;">
+            💤 啟用睡覺模式 (關閉畫面，背景默默抓拍超省電)
+        </label>
+
+        <button id="startBtn" class="btn" disabled>⏳ 載入魔法核心中 (請稍候)...</button>
+    </div>
+
+    <!-- 視覺顯示畫布 -->
+    <canvas id="canvasOutput" width="640" height="480"></canvas>
+
+    <!-- 隱藏的工作元件 -->
+    <video id="videoElement" width="640" height="480" autoplay playsinline></video>
+    <img id="ipcamElement" width="640" height="480" crossorigin="anonymous">
+    <!-- 用來在睡覺模式也能拍出彩色照片的隱藏畫布 -->
+    <canvas id="hiddenCanvas" width="640" height="480"></canvas> 
+
+    <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvReady();" type="text/javascript"></script>
+
+    <script>
+        let video = document.getElementById('videoElement');
+        let ipcam = document.getElementById('ipcamElement');
+        let canvas = document.getElementById('canvasOutput');
+        let ctx = canvas.getContext('2d');
+        let hiddenCanvas = document.getElementById('hiddenCanvas');
+        let hCtx = hiddenCanvas.getContext('2d', { willReadFrequently: true });
+        
+        let startBtn = document.getElementById('startBtn');
+        let speedSlider = document.getElementById('speedSlider');
+        let trigSlider = document.getElementById('trigSlider');
+        let calibInput = document.getElementById('calibInput');
+        let camSourceInput = document.getElementById('camSource');
+        let powerCheck = document.getElementById('powerCheck');
+        
+        let streaming = false;
+        let useIpCam = false;
+        let src, gray, prevGray, diff, thresh, contours, hierarchy;
+        
+        let speeding_counter = 0;
+        let prev_cx = 0, prev_cy = 0;
+        let last_time = 0;
+        let last_capture_time = 0;
+        let smoothed_speed = 0;
+
+        function onOpenCvReady() {
+            startBtn.disabled = false;
+            startBtn.innerText = '🌟 開始測速 🌟';
+            drawZzzCanvas("(๑• . •๑) 等待打開眼睛...");
+        }
+
+        function drawZzzCanvas(text) {
+            ctx.fillStyle = "#FFFFFF";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = "#90CAF9";
+            ctx.font = "bold 24px 'Microsoft JhengHei'";
+            ctx.textAlign = "center";
+            ctx.fillText(text, canvas.width/2, canvas.height/2);
+        }
+
+        speedSlider.oninput = function() { document.getElementById('speedLabel').innerText = `🚨 抓拍速限 (大於此時速才拍照): ${this.value} km/h`; }
+        trigSlider.oninput = function() { document.getElementById('trigLabel').innerText = `⏱️ 防誤判 (連續超速幾次才拍): ${this.value}`; }
+        powerCheck.onchange = function() {
+            if(streaming && this.checked) {
+                drawZzzCanvas("( ˘ω˘ ) 睡覺模式運作中... 背景抓拍不漏接！");
+            }
+        }
+
+        startBtn.addEventListener('click', () => {
+            if (!streaming) {
+                let sourceValue = camSourceInput.value.trim();
+                
+                if (sourceValue === '0') {
+                    useIpCam = false;
+                    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: 640, height: 480 }, audio: false })
+                    .then(function(stream) {
+                        video.srcObject = stream;
+                        video.play();
+                        initOpenCVAndStart();
+                    })
+                    .catch(err => alert("無法存取本機鏡頭！"));
+                } else {
+                    useIpCam = true;
+                    // 加入時間戳記避免快取
+                    ipcam.src = sourceValue + (sourceValue.includes('?') ? '&' : '?') + new Date().getTime(); 
+                    initOpenCVAndStart();
+                }
+            } else {
+                if(!useIpCam && video.srcObject) {
+                    video.srcObject.getTracks().forEach(track => track.stop());
+                    video.srcObject = null;
+                }
+                ipcam.src = "";
+                streaming = false;
+                startBtn.innerText = '🌟 開始測速 🌟';
+                startBtn.classList.remove('stop');
+                drawZzzCanvas("(－_－) zzZ 休息中");
+            }
+        });
+
+        function initOpenCVAndStart() {
+            streaming = true;
+            startBtn.innerText = '🛑 停止測速 🛑';
+            startBtn.classList.add('stop');
+            
+            setTimeout(() => {
+                src = new cv.Mat(480, 640, cv.CV_8UC4);
+                gray = new cv.Mat(480, 640, cv.CV_8UC1);
+                prevGray = new cv.Mat(480, 640, cv.CV_8UC1);
+                diff = new cv.Mat(480, 640, cv.CV_8UC1);
+                thresh = new cv.Mat(480, 640, cv.CV_8UC1);
+                contours = new cv.MatVector();
+                hierarchy = new cv.Mat();
+                last_time = performance.now();
+                requestAnimationFrame(processVideo);
+            }, 1000);
+        }
+
+        function processVideo() {
+            if (!streaming) return;
+            
+            try {
+                // 根據來源讀取影像到 hiddenCanvas
+                if (useIpCam) {
+                    hCtx.drawImage(ipcam, 0, 0, 640, 480);
+                } else {
+                    hCtx.drawImage(video, 0, 0, 640, 480);
+                }
+                
+                // 從 hiddenCanvas 讀取成 OpenCV 矩陣
+                src.data.set(hCtx.getImageData(0, 0, 640, 480).data);
+                cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+                
+                if (prevGray.empty()) {
+                    gray.copyTo(prevGray);
+                    requestAnimationFrame(processVideo);
+                    return;
+                }
+
+                cv.absdiff(gray, prevGray, diff);
+                cv.threshold(diff, thresh, 40, 255, cv.THRESH_BINARY);
+                cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+                let maxArea = 0;
+                let maxRect = null;
+
+                for (let i = 0; i < contours.size(); i++) {
+                    let cnt = contours.get(i);
+                    let area = cv.contourArea(cnt);
+                    if (area > 1500 && area > maxArea) {
+                        maxArea = area;
+                        maxRect = cv.boundingRect(cnt);
+                    }
+                }
+
+                let now = performance.now();
+                let dt = (now - last_time) / 1000.0;
+                let isSpeeding = false;
+                let display_speed = 0;
+
+                if (maxRect) {
+                    let cx = maxRect.x + maxRect.width / 2;
+                    let cy = maxRect.y + maxRect.height / 2;
+
+                    if (prev_cx !== 0 && prev_cy !== 0 && dt > 0) {
+                        let px_dist = Math.hypot(cx - prev_cx, cy - prev_cy);
+                        let meters_per_px = parseFloat(calibInput.value) / 100.0; // 核心！由設定的公尺換算
+                        let dist_meters = px_dist * meters_per_px;
+                        let current_speed_kmh = (dist_meters / dt) * 3.6;
+                        smoothed_speed = (smoothed_speed * 0.7) + (current_speed_kmh * 0.3);
+                    }
+                    prev_cx = cx;
+                    prev_cy = cy;
+
+                    display_speed = Math.round(smoothed_speed * 10) / 10;
+                    let speedLimit = parseInt(speedSlider.value);
+                    isSpeeding = (display_speed > speedLimit);
+
+                    // --- 繪製隱藏畫布 (準備存檔用) ---
+                    hCtx.strokeStyle = isSpeeding ? "#FF3366" : "#42A5F5";
+                    hCtx.lineWidth = 4;
+                    hCtx.strokeRect(maxRect.x, maxRect.y, maxRect.width, maxRect.height);
+                    
+                    hCtx.fillStyle = isSpeeding ? "#FF3366" : "#42A5F5";
+                    hCtx.font = "bold 32px 'Microsoft JhengHei'";
+                    hCtx.textAlign = "left";
+                    hCtx.fillText(`${display_speed} km/h`, maxRect.x, maxRect.y - 15);
+
+                    if (isSpeeding && display_speed > 2) {
+                        speeding_counter++;
+                    } else {
+                        speeding_counter = Math.max(0, speeding_counter - 1);
+                    }
+
+                    if (speeding_counter >= parseInt(trigSlider.value) && (now - last_capture_time > 2000)) {
+                        hCtx.fillStyle = "#FF0000";
+                        hCtx.fillText("📸 超速抓拍！", maxRect.x, maxRect.y - 50);
+                        savePhotoFromHidden();
+                        last_capture_time = now;
+                        speeding_counter = 0;
+                    }
+                } else {
+                    prev_cx = 0;
+                    prev_cy = 0;
+                    smoothed_speed *= 0.8; 
+                }
+
+                // --- 繪製前端畫面 ---
+                let isSleeping = powerCheck.checked;
+                if (!isSleeping) {
+                    // 沒睡覺時，把 hiddenCanvas 的處理結果複製到前端畫布
+                    ctx.drawImage(hiddenCanvas, 0, 0);
+                    
+                    // ✨ 畫出 100 像素比例尺 (只在沒睡覺時顯示，不破壞截圖) ✨
+                    ctx.strokeStyle = "#FF3B30";
+                    ctx.lineWidth = 5;
+                    ctx.beginPath();
+                    ctx.moveTo(20, 50);
+                    ctx.lineTo(120, 50); // X座標 20 到 120，剛好 100 像素
+                    ctx.stroke();
+                    
+                    ctx.fillStyle = "#FF3B30";
+                    ctx.font = "bold 18px 'Microsoft JhengHei'";
+                    ctx.textAlign = "left";
+                    ctx.fillText("← 這條線是 100 像素 →", 15, 35);
+                }
+
+                last_time = now;
+                gray.copyTo(prevGray);
+                requestAnimationFrame(processVideo);
+
+            } catch (err) {
+                // 若遇上 CORS 或載入延遲，顯示錯誤
+                if(!powerCheck.checked) {
+                    drawZzzCanvas("鏡頭連線異常 / 畫面讀取中...");
+                }
+                requestAnimationFrame(processVideo);
+            }
+        }
+
+        function savePhotoFromHidden() {
+            // 從包含紅框、時速文字的 hiddenCanvas 輸出照片
+            let link = document.createElement('a');
+            let timestamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
+            link.download = `speeding_${timestamp}.jpg`;
+            link.href = hiddenCanvas.toDataURL('image/jpeg', 0.9);
+            link.click();
+        }
+    </script>
+</body>
+</html>
