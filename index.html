@@ -164,16 +164,13 @@
         <button id="startBtn" class="btn" disabled>⏳ 載入魔法核心中 (請稍候)...</button>
     </div>
 
-    <!-- 視覺顯示畫布 -->
     <canvas id="canvasOutput" width="640" height="480"></canvas>
 
-    <!-- 照片紀錄區 (相簿) -->
     <div class="gallery-container">
         <div class="gallery-title">📸 違規抓拍紀錄區 (點擊照片即可下載)</div>
         <div id="gallery"></div>
     </div>
 
-    <!-- 隱藏的工作元件 -->
     <video id="videoElement" width="640" height="480" autoplay playsinline></video>
     <img id="ipcamElement" width="640" height="480" crossorigin="anonymous">
     <canvas id="hiddenCanvas" width="640" height="480"></canvas> 
@@ -198,13 +195,14 @@
         
         let streaming = false;
         let useIpCam = false;
-        let src, gray, prevGray, diff, thresh, contours, hierarchy;
+        let src, gray, prevGray, diff, thresh, contours, hierarchy, kernel;
         
         let speeding_counter = 0;
         let prev_cx = 0, prev_cy = 0;
         let last_time = 0;
         let last_capture_time = 0;
         let smoothed_speed = 0;
+        let frameCount = 0; // 新增：影格計數器
 
         function onOpenCvReady() {
             startBtn.disabled = false;
@@ -272,6 +270,11 @@
                 thresh = new cv.Mat(480, 640, cv.CV_8UC1);
                 contours = new cv.MatVector();
                 hierarchy = new cv.Mat();
+                
+                // 【核心修正1】：建立一個 15x15 的超級放大鏡矩陣，用來把破碎的像素黏在一起
+                kernel = cv.Mat.ones(15, 15, cv.CV_8U); 
+                
+                frameCount = 0;
                 last_time = performance.now();
                 requestAnimationFrame(processVideo);
             }, 1000);
@@ -296,9 +299,12 @@
                     return;
                 }
 
-                // 【修正2 & 3】：調降門檻，讓室內揮手更容易被偵測到
                 cv.absdiff(gray, prevGray, diff);
-                cv.threshold(diff, thresh, 25, 255, cv.THRESH_BINARY); // 原本 40 改 25
+                cv.threshold(diff, thresh, 25, 255, cv.THRESH_BINARY);
+                
+                // 【核心修正2】：執行影像膨脹！這會把小斑點連成巨大的色塊，保證抓得到手
+                cv.dilate(thresh, thresh, kernel, new cv.Point(-1, -1), 1);
+                
                 cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
                 let maxArea = 0;
@@ -307,7 +313,7 @@
                 for (let i = 0; i < contours.size(); i++) {
                     let cnt = contours.get(i);
                     let area = cv.contourArea(cnt);
-                    // 【修正2】：面積大於 500 就追蹤 (原本是 1500，對揮手來說太嚴格)
+                    // 因為膨脹過了，面積會變大，保留 500 就能輕鬆過濾細微雜訊並鎖定你的手
                     if (area > 500 && area > maxArea) {
                         maxArea = area;
                         maxRect = cv.boundingRect(cnt);
@@ -339,7 +345,6 @@
                     isSpeeding = (display_speed > speedLimit);
 
                     hCtx.strokeStyle = isSpeeding ? "#FF3366" : "#42A5F5";
-                    // 如果超速，把紅框加粗，看起來更明顯！
                     hCtx.lineWidth = isSpeeding ? 8 : 4; 
                     hCtx.strokeRect(maxRect.x, maxRect.y, maxRect.width, maxRect.height);
                     
@@ -348,14 +353,13 @@
                     hCtx.textAlign = "left";
                     hCtx.fillText(`${display_speed} m/s`, maxRect.x, maxRect.y - 15);
 
-                    // 【修正1】：拔掉原本大於 2 才計數的保險鎖，改成大於 0.1 即可
                     if (isSpeeding && display_speed > 0.1) {
                         speeding_counter++;
                     } else {
                         speeding_counter = Math.max(0, speeding_counter - 1);
                     }
 
-                    if (speeding_counter >= parseInt(trigSlider.value) && (now - last_capture_time > 2000)) {
+                    if (speeding_counter >= parseInt(trigSlider.value) && (now - last_capture_time > 1500)) {
                         hCtx.fillStyle = "#FF0000";
                         hCtx.fillText("📸 超速抓拍！", maxRect.x, maxRect.y - 60);
                         
@@ -388,7 +392,13 @@
                 }
 
                 last_time = now;
-                gray.copyTo(prevGray);
+                
+                // 【核心修正3】：每隔 3 幀才更新一次背景，確保物體產生足夠大的相對位移
+                frameCount++;
+                if (frameCount % 3 === 0) {
+                    gray.copyTo(prevGray);
+                }
+                
                 requestAnimationFrame(processVideo);
 
             } catch (err) {
