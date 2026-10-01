@@ -94,7 +94,6 @@
             background-color: #FFF;
         }
 
-        /* 網頁相簿區塊樣式 */
         .gallery-container {
             width: 90%;
             max-width: 640px;
@@ -144,18 +143,17 @@
 
         <div class="control-group" style="display: flex; justify-content: space-between; align-items: center; background: #F5F5F5; padding: 10px; border-radius: 10px;">
             <span>📏 請看畫面左上角紅線 (100像素)<br>這條紅線在現實中大約是幾公尺？</span>
-            <input type="number" id="calibInput" value="1.5" step="0.1" min="0.1">
+            <input type="number" id="calibInput" value="0.1" step="0.1" min="0.1">
         </div>
 
         <div class="control-group">
-            <!-- 單位改為 m/s -->
-            <label id="speedLabel">🚨 抓拍速限: 大於 2.0 m/s (公尺/秒) 才拍照</label>
-            <input type="range" id="speedSlider" min="0.5" max="10.0" step="0.5" value="2.0">
+            <label id="speedLabel">🚨 抓拍速限: 大於 0.5 m/s (公尺/秒) 才拍照</label>
+            <input type="range" id="speedSlider" min="0.5" max="10.0" step="0.5" value="0.5">
         </div>
         
         <div class="control-group">
-            <label id="trigLabel">⏱️ 防誤判 (連續超速幾張畫面才拍): 5</label>
-            <input type="range" id="trigSlider" min="1" max="15" value="5">
+            <label id="trigLabel">⏱️ 防誤判 (連續超速幾張畫面才拍): 1</label>
+            <input type="range" id="trigSlider" min="1" max="15" value="1">
         </div>
 
         <label class="checkbox-label">
@@ -223,7 +221,6 @@
             ctx.fillText(text, canvas.width/2, canvas.height/2);
         }
 
-        // 更新單位為 m/s
         speedSlider.oninput = function() { document.getElementById('speedLabel').innerText = `🚨 抓拍速限: 大於 ${this.value} m/s (公尺/秒) 才拍照`; }
         trigSlider.oninput = function() { document.getElementById('trigLabel').innerText = `⏱️ 防誤判 (連續超速幾張畫面才拍): ${this.value}`; }
         powerCheck.onchange = function() {
@@ -299,8 +296,9 @@
                     return;
                 }
 
+                // 【修正2 & 3】：調降門檻，讓室內揮手更容易被偵測到
                 cv.absdiff(gray, prevGray, diff);
-                cv.threshold(diff, thresh, 40, 255, cv.THRESH_BINARY);
+                cv.threshold(diff, thresh, 25, 255, cv.THRESH_BINARY); // 原本 40 改 25
                 cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
                 let maxArea = 0;
@@ -309,7 +307,8 @@
                 for (let i = 0; i < contours.size(); i++) {
                     let cnt = contours.get(i);
                     let area = cv.contourArea(cnt);
-                    if (area > 1500 && area > maxArea) {
+                    // 【修正2】：面積大於 500 就追蹤 (原本是 1500，對揮手來說太嚴格)
+                    if (area > 500 && area > maxArea) {
                         maxArea = area;
                         maxRect = cv.boundingRect(cnt);
                     }
@@ -329,7 +328,6 @@
                         let meters_per_px = parseFloat(calibInput.value) / 100.0;
                         let dist_meters = px_dist * meters_per_px;
                         
-                        // 直接使用 m/s，不再乘以 3.6
                         let current_speed_ms = dist_meters / dt; 
                         smoothed_speed = (smoothed_speed * 0.7) + (current_speed_ms * 0.3);
                     }
@@ -341,16 +339,17 @@
                     isSpeeding = (display_speed > speedLimit);
 
                     hCtx.strokeStyle = isSpeeding ? "#FF3366" : "#42A5F5";
-                    hCtx.lineWidth = 4;
+                    // 如果超速，把紅框加粗，看起來更明顯！
+                    hCtx.lineWidth = isSpeeding ? 8 : 4; 
                     hCtx.strokeRect(maxRect.x, maxRect.y, maxRect.width, maxRect.height);
                     
                     hCtx.fillStyle = isSpeeding ? "#FF3366" : "#42A5F5";
                     hCtx.font = "bold 36px 'Microsoft JhengHei'";
                     hCtx.textAlign = "left";
-                    // 標示改為 m/s
                     hCtx.fillText(`${display_speed} m/s`, maxRect.x, maxRect.y - 15);
 
-                    if (isSpeeding && display_speed > 0.5) {
+                    // 【修正1】：拔掉原本大於 2 才計數的保險鎖，改成大於 0.1 即可
+                    if (isSpeeding && display_speed > 0.1) {
                         speeding_counter++;
                     } else {
                         speeding_counter = Math.max(0, speeding_counter - 1);
@@ -360,7 +359,6 @@
                         hCtx.fillStyle = "#FF0000";
                         hCtx.fillText("📸 超速抓拍！", maxRect.x, maxRect.y - 60);
                         
-                        // 呼叫新的存檔函數 (顯示在網頁相簿)
                         addPhotoToGallery();
                         
                         last_capture_time = now;
@@ -401,17 +399,13 @@
             }
         }
 
-        // 新功能：將照片加到網頁下方的相簿中
         function addPhotoToGallery() {
             let dataUrl = hiddenCanvas.toDataURL('image/jpeg', 0.9);
-            
-            // 建立圖片元件
             let img = document.createElement('img');
             img.src = dataUrl;
             img.className = 'snap-img';
             img.title = "點擊下載這張照片";
             
-            // 點擊圖片時觸發下載
             img.onclick = function() {
                 let link = document.createElement('a');
                 let timestamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
@@ -420,7 +414,6 @@
                 link.click();
             };
             
-            // 將最新的照片加到相簿最前面
             gallery.prepend(img);
         }
     </script>
