@@ -128,7 +128,12 @@
             border-color: #E91E63;
         }
         
-        #videoElement, #ipcamElement, #hiddenCanvas { display: none; }
+        /* 核心修正：使用絕對定位移出畫面，避免瀏覽器將 display:none 的影片變黑 */
+        #videoElement, #ipcamElement, #hiddenCanvas { 
+            position: absolute; 
+            top: -9999px; 
+            left: -9999px; 
+        }
     </style>
 </head>
 <body>
@@ -164,13 +169,16 @@
         <button id="startBtn" class="btn" disabled>⏳ 載入魔法核心中 (請稍候)...</button>
     </div>
 
+    <!-- 視覺顯示畫布 -->
     <canvas id="canvasOutput" width="640" height="480"></canvas>
 
+    <!-- 照片紀錄區 (相簿) -->
     <div class="gallery-container">
         <div class="gallery-title">📸 違規抓拍紀錄區 (點擊照片即可下載)</div>
         <div id="gallery"></div>
     </div>
 
+    <!-- 將這些元件用 CSS 移出畫面，確保瀏覽器持續渲染 -->
     <video id="videoElement" width="640" height="480" autoplay playsinline></video>
     <img id="ipcamElement" width="640" height="480" crossorigin="anonymous">
     <canvas id="hiddenCanvas" width="640" height="480"></canvas> 
@@ -195,6 +203,7 @@
         
         let streaming = false;
         let useIpCam = false;
+        let cap = null;
         let src, gray, prevGray, diff, thresh, contours, hierarchy, kernel;
         
         let speeding_counter = 0;
@@ -202,7 +211,7 @@
         let last_time = 0;
         let last_capture_time = 0;
         let smoothed_speed = 0;
-        let frameCount = 0; // 新增：影格計數器
+        let frameCount = 0;
 
         function onOpenCvReady() {
             startBtn.disabled = false;
@@ -236,13 +245,21 @@
                     .then(function(stream) {
                         video.srcObject = stream;
                         video.play();
-                        initOpenCVAndStart();
+                        // 確保影片開始播放後才啟動 OpenCV
+                        video.onloadeddata = function() {
+                            initOpenCVAndStart();
+                        };
                     })
-                    .catch(err => alert("無法存取本機鏡頭！"));
+                    .catch(err => alert("無法存取本機鏡頭！請確認網頁已允許相機權限。"));
                 } else {
                     useIpCam = true;
                     ipcam.src = sourceValue + (sourceValue.includes('?') ? '&' : '?') + new Date().getTime(); 
-                    initOpenCVAndStart();
+                    ipcam.onload = function() {
+                        if(!streaming) initOpenCVAndStart();
+                    };
+                    ipcam.onerror = function() {
+                        alert("無法讀取 IP 攝影機畫面，請確認網址是否正確！");
+                    }
                 }
             } else {
                 if(!useIpCam && video.srcObject) {
@@ -262,35 +279,40 @@
             startBtn.innerText = '🛑 停止測速 🛑';
             startBtn.classList.add('stop');
             
-            setTimeout(() => {
-                src = new cv.Mat(480, 640, cv.CV_8UC4);
-                gray = new cv.Mat(480, 640, cv.CV_8UC1);
-                prevGray = new cv.Mat(480, 640, cv.CV_8UC1);
-                diff = new cv.Mat(480, 640, cv.CV_8UC1);
-                thresh = new cv.Mat(480, 640, cv.CV_8UC1);
-                contours = new cv.MatVector();
-                hierarchy = new cv.Mat();
-                
-                // 【核心修正1】：建立一個 15x15 的超級放大鏡矩陣，用來把破碎的像素黏在一起
-                kernel = cv.Mat.ones(15, 15, cv.CV_8U); 
-                
-                frameCount = 0;
-                last_time = performance.now();
-                requestAnimationFrame(processVideo);
-            }, 1000);
+            // 初始化 OpenCV 變數
+            if (!useIpCam) {
+                cap = new cv.VideoCapture(video);
+            }
+            
+            src = new cv.Mat(480, 640, cv.CV_8UC4);
+            gray = new cv.Mat(480, 640, cv.CV_8UC1);
+            prevGray = new cv.Mat(480, 640, cv.CV_8UC1);
+            diff = new cv.Mat(480, 640, cv.CV_8UC1);
+            thresh = new cv.Mat(480, 640, cv.CV_8UC1);
+            contours = new cv.MatVector();
+            hierarchy = new cv.Mat();
+            kernel = cv.Mat.ones(15, 15, cv.CV_8U); 
+            
+            frameCount = 0;
+            last_time = performance.now();
+            requestAnimationFrame(processVideo);
         }
 
         function processVideo() {
             if (!streaming) return;
             
             try {
+                // 1. 抓取影像到 src
                 if (useIpCam) {
                     hCtx.drawImage(ipcam, 0, 0, 640, 480);
+                    src.data.set(hCtx.getImageData(0, 0, 640, 480).data);
                 } else {
-                    hCtx.drawImage(video, 0, 0, 640, 480);
+                    cap.read(src); // OpenCV 原生讀取法，絕不黑屏
                 }
                 
-                src.data.set(hCtx.getImageData(0, 0, 640, 480).data);
+                // 2. 將原始影像畫到隱藏畫布，準備在上面畫紅框
+                cv.imshow('hiddenCanvas', src);
+
                 cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
                 
                 if (prevGray.empty()) {
@@ -301,10 +323,7 @@
 
                 cv.absdiff(gray, prevGray, diff);
                 cv.threshold(diff, thresh, 25, 255, cv.THRESH_BINARY);
-                
-                // 【核心修正2】：執行影像膨脹！這會把小斑點連成巨大的色塊，保證抓得到手
                 cv.dilate(thresh, thresh, kernel, new cv.Point(-1, -1), 1);
-                
                 cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
                 let maxArea = 0;
@@ -313,11 +332,11 @@
                 for (let i = 0; i < contours.size(); i++) {
                     let cnt = contours.get(i);
                     let area = cv.contourArea(cnt);
-                    // 因為膨脹過了，面積會變大，保留 500 就能輕鬆過濾細微雜訊並鎖定你的手
                     if (area > 500 && area > maxArea) {
                         maxArea = area;
                         maxRect = cv.boundingRect(cnt);
                     }
+                    cnt.delete(); // 防止記憶體外洩崩潰
                 }
 
                 let now = performance.now();
@@ -344,6 +363,7 @@
                     let speedLimit = parseFloat(speedSlider.value);
                     isSpeeding = (display_speed > speedLimit);
 
+                    // 在隱藏畫布上畫框與時速
                     hCtx.strokeStyle = isSpeeding ? "#FF3366" : "#42A5F5";
                     hCtx.lineWidth = isSpeeding ? 8 : 4; 
                     hCtx.strokeRect(maxRect.x, maxRect.y, maxRect.width, maxRect.height);
@@ -374,6 +394,7 @@
                     smoothed_speed *= 0.8; 
                 }
 
+                // 將畫好的隱藏畫布顯示到前端
                 let isSleeping = powerCheck.checked;
                 if (!isSleeping) {
                     ctx.drawImage(hiddenCanvas, 0, 0);
@@ -393,7 +414,6 @@
 
                 last_time = now;
                 
-                // 【核心修正3】：每隔 3 幀才更新一次背景，確保物體產生足夠大的相對位移
                 frameCount++;
                 if (frameCount % 3 === 0) {
                     gray.copyTo(prevGray);
@@ -403,7 +423,7 @@
 
             } catch (err) {
                 if(!powerCheck.checked) {
-                    drawZzzCanvas("鏡頭連線異常 / 畫面讀取中...");
+                    drawZzzCanvas("讀取中...");
                 }
                 requestAnimationFrame(processVideo);
             }
