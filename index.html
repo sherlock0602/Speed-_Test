@@ -93,8 +93,42 @@
             margin-top: 20px;
             background-color: #FFF;
         }
+
+        /* 網頁相簿區塊樣式 */
+        .gallery-container {
+            width: 90%;
+            max-width: 640px;
+            margin-top: 20px;
+            background-color: #FFFFFF;
+            border: 3px dashed #FFB6C1;
+            border-radius: 15px;
+            padding: 20px;
+        }
+        .gallery-title {
+            color: #E91E63;
+            font-weight: bold;
+            font-size: 18px;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        #gallery {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+        }
+        .snap-img {
+            width: 180px;
+            border-radius: 8px;
+            border: 2px solid #FFCDD2;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .snap-img:hover {
+            transform: scale(1.05);
+            border-color: #E91E63;
+        }
         
-        /* 隱藏用於背後運算的元件 */
         #videoElement, #ipcamElement, #hiddenCanvas { display: none; }
     </style>
 </head>
@@ -114,17 +148,18 @@
         </div>
 
         <div class="control-group">
-            <label id="speedLabel">🚨 抓拍速限 (大於此時速才拍照): 15 km/h</label>
-            <input type="range" id="speedSlider" min="5" max="30" value="15">
+            <!-- 單位改為 m/s -->
+            <label id="speedLabel">🚨 抓拍速限: 大於 2.0 m/s (公尺/秒) 才拍照</label>
+            <input type="range" id="speedSlider" min="0.5" max="10.0" step="0.5" value="2.0">
         </div>
         
         <div class="control-group">
-            <label id="trigLabel">⏱️ 防誤判 (連續超速幾次才拍): 3</label>
-            <input type="range" id="trigSlider" min="1" max="10" value="3">
+            <label id="trigLabel">⏱️ 防誤判 (連續超速幾張畫面才拍): 5</label>
+            <input type="range" id="trigSlider" min="1" max="15" value="5">
         </div>
 
         <label class="checkbox-label">
-            <input type="checkbox" id="powerCheck" style="width: 20px; height: 20px; margin-right: 10px;">
+            <input type="checkbox" id="powerCheck">
             💤 啟用睡覺模式 (關閉畫面，背景默默抓拍超省電)
         </label>
 
@@ -134,10 +169,15 @@
     <!-- 視覺顯示畫布 -->
     <canvas id="canvasOutput" width="640" height="480"></canvas>
 
+    <!-- 照片紀錄區 (相簿) -->
+    <div class="gallery-container">
+        <div class="gallery-title">📸 違規抓拍紀錄區 (點擊照片即可下載)</div>
+        <div id="gallery"></div>
+    </div>
+
     <!-- 隱藏的工作元件 -->
     <video id="videoElement" width="640" height="480" autoplay playsinline></video>
     <img id="ipcamElement" width="640" height="480" crossorigin="anonymous">
-    <!-- 用來在睡覺模式也能拍出彩色照片的隱藏畫布 -->
     <canvas id="hiddenCanvas" width="640" height="480"></canvas> 
 
     <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvReady();" type="text/javascript"></script>
@@ -149,6 +189,7 @@
         let ctx = canvas.getContext('2d');
         let hiddenCanvas = document.getElementById('hiddenCanvas');
         let hCtx = hiddenCanvas.getContext('2d', { willReadFrequently: true });
+        let gallery = document.getElementById('gallery');
         
         let startBtn = document.getElementById('startBtn');
         let speedSlider = document.getElementById('speedSlider');
@@ -182,8 +223,9 @@
             ctx.fillText(text, canvas.width/2, canvas.height/2);
         }
 
-        speedSlider.oninput = function() { document.getElementById('speedLabel').innerText = `🚨 抓拍速限 (大於此時速才拍照): ${this.value} km/h`; }
-        trigSlider.oninput = function() { document.getElementById('trigLabel').innerText = `⏱️ 防誤判 (連續超速幾次才拍): ${this.value}`; }
+        // 更新單位為 m/s
+        speedSlider.oninput = function() { document.getElementById('speedLabel').innerText = `🚨 抓拍速限: 大於 ${this.value} m/s (公尺/秒) 才拍照`; }
+        trigSlider.oninput = function() { document.getElementById('trigLabel').innerText = `⏱️ 防誤判 (連續超速幾張畫面才拍): ${this.value}`; }
         powerCheck.onchange = function() {
             if(streaming && this.checked) {
                 drawZzzCanvas("( ˘ω˘ ) 睡覺模式運作中... 背景抓拍不漏接！");
@@ -193,7 +235,6 @@
         startBtn.addEventListener('click', () => {
             if (!streaming) {
                 let sourceValue = camSourceInput.value.trim();
-                
                 if (sourceValue === '0') {
                     useIpCam = false;
                     navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: 640, height: 480 }, audio: false })
@@ -205,7 +246,6 @@
                     .catch(err => alert("無法存取本機鏡頭！"));
                 } else {
                     useIpCam = true;
-                    // 加入時間戳記避免快取
                     ipcam.src = sourceValue + (sourceValue.includes('?') ? '&' : '?') + new Date().getTime(); 
                     initOpenCVAndStart();
                 }
@@ -244,14 +284,12 @@
             if (!streaming) return;
             
             try {
-                // 根據來源讀取影像到 hiddenCanvas
                 if (useIpCam) {
                     hCtx.drawImage(ipcam, 0, 0, 640, 480);
                 } else {
                     hCtx.drawImage(video, 0, 0, 640, 480);
                 }
                 
-                // 從 hiddenCanvas 讀取成 OpenCV 矩陣
                 src.data.set(hCtx.getImageData(0, 0, 640, 480).data);
                 cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
                 
@@ -288,29 +326,31 @@
 
                     if (prev_cx !== 0 && prev_cy !== 0 && dt > 0) {
                         let px_dist = Math.hypot(cx - prev_cx, cy - prev_cy);
-                        let meters_per_px = parseFloat(calibInput.value) / 100.0; // 核心！由設定的公尺換算
+                        let meters_per_px = parseFloat(calibInput.value) / 100.0;
                         let dist_meters = px_dist * meters_per_px;
-                        let current_speed_kmh = (dist_meters / dt) * 3.6;
-                        smoothed_speed = (smoothed_speed * 0.7) + (current_speed_kmh * 0.3);
+                        
+                        // 直接使用 m/s，不再乘以 3.6
+                        let current_speed_ms = dist_meters / dt; 
+                        smoothed_speed = (smoothed_speed * 0.7) + (current_speed_ms * 0.3);
                     }
                     prev_cx = cx;
                     prev_cy = cy;
 
                     display_speed = Math.round(smoothed_speed * 10) / 10;
-                    let speedLimit = parseInt(speedSlider.value);
+                    let speedLimit = parseFloat(speedSlider.value);
                     isSpeeding = (display_speed > speedLimit);
 
-                    // --- 繪製隱藏畫布 (準備存檔用) ---
                     hCtx.strokeStyle = isSpeeding ? "#FF3366" : "#42A5F5";
                     hCtx.lineWidth = 4;
                     hCtx.strokeRect(maxRect.x, maxRect.y, maxRect.width, maxRect.height);
                     
                     hCtx.fillStyle = isSpeeding ? "#FF3366" : "#42A5F5";
-                    hCtx.font = "bold 32px 'Microsoft JhengHei'";
+                    hCtx.font = "bold 36px 'Microsoft JhengHei'";
                     hCtx.textAlign = "left";
-                    hCtx.fillText(`${display_speed} km/h`, maxRect.x, maxRect.y - 15);
+                    // 標示改為 m/s
+                    hCtx.fillText(`${display_speed} m/s`, maxRect.x, maxRect.y - 15);
 
-                    if (isSpeeding && display_speed > 2) {
+                    if (isSpeeding && display_speed > 0.5) {
                         speeding_counter++;
                     } else {
                         speeding_counter = Math.max(0, speeding_counter - 1);
@@ -318,8 +358,11 @@
 
                     if (speeding_counter >= parseInt(trigSlider.value) && (now - last_capture_time > 2000)) {
                         hCtx.fillStyle = "#FF0000";
-                        hCtx.fillText("📸 超速抓拍！", maxRect.x, maxRect.y - 50);
-                        savePhotoFromHidden();
+                        hCtx.fillText("📸 超速抓拍！", maxRect.x, maxRect.y - 60);
+                        
+                        // 呼叫新的存檔函數 (顯示在網頁相簿)
+                        addPhotoToGallery();
+                        
                         last_capture_time = now;
                         speeding_counter = 0;
                     }
@@ -329,18 +372,15 @@
                     smoothed_speed *= 0.8; 
                 }
 
-                // --- 繪製前端畫面 ---
                 let isSleeping = powerCheck.checked;
                 if (!isSleeping) {
-                    // 沒睡覺時，把 hiddenCanvas 的處理結果複製到前端畫布
                     ctx.drawImage(hiddenCanvas, 0, 0);
                     
-                    // ✨ 畫出 100 像素比例尺 (只在沒睡覺時顯示，不破壞截圖) ✨
                     ctx.strokeStyle = "#FF3B30";
                     ctx.lineWidth = 5;
                     ctx.beginPath();
                     ctx.moveTo(20, 50);
-                    ctx.lineTo(120, 50); // X座標 20 到 120，剛好 100 像素
+                    ctx.lineTo(120, 50); 
                     ctx.stroke();
                     
                     ctx.fillStyle = "#FF3B30";
@@ -354,7 +394,6 @@
                 requestAnimationFrame(processVideo);
 
             } catch (err) {
-                // 若遇上 CORS 或載入延遲，顯示錯誤
                 if(!powerCheck.checked) {
                     drawZzzCanvas("鏡頭連線異常 / 畫面讀取中...");
                 }
@@ -362,13 +401,27 @@
             }
         }
 
-        function savePhotoFromHidden() {
-            // 從包含紅框、時速文字的 hiddenCanvas 輸出照片
-            let link = document.createElement('a');
-            let timestamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
-            link.download = `speeding_${timestamp}.jpg`;
-            link.href = hiddenCanvas.toDataURL('image/jpeg', 0.9);
-            link.click();
+        // 新功能：將照片加到網頁下方的相簿中
+        function addPhotoToGallery() {
+            let dataUrl = hiddenCanvas.toDataURL('image/jpeg', 0.9);
+            
+            // 建立圖片元件
+            let img = document.createElement('img');
+            img.src = dataUrl;
+            img.className = 'snap-img';
+            img.title = "點擊下載這張照片";
+            
+            // 點擊圖片時觸發下載
+            img.onclick = function() {
+                let link = document.createElement('a');
+                let timestamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
+                link.download = `snap_${timestamp}.jpg`;
+                link.href = dataUrl;
+                link.click();
+            };
+            
+            // 將最新的照片加到相簿最前面
+            gallery.prepend(img);
         }
     </script>
 </body>
