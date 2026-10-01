@@ -3,187 +3,222 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🐾 走廊小精靈 // 測速雷達究極版 🐾</title>
+    <title>🐾 走廊測速終端控制台 🐾</title>
     <style>
         body {
-            background-color: #E3F2FD;
-            font-family: 'Microsoft JhengHei', 'Varela Round', sans-serif;
-            color: #455A64;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
+            background-color: #F0F4F8;
+            font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+            color: #334E68;
             margin: 0;
             padding: 20px;
         }
-        .container {
-            background-color: #FFFFFF;
-            border: 3px dashed #90CAF9;
-            border-radius: 15px;
-            padding: 25px;
-            width: 90%;
-            max-width: 640px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            margin-top: 20px;
+        /* 專業雙欄排版 */
+        .dashboard {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
         }
-        .title-badge {
-            background-color: #90CAF9;
-            color: white;
-            padding: 5px 15px;
-            border-radius: 10px;
+        .main-panel {
+            flex: 2;
+            min-width: 600px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .side-panel {
+            flex: 1;
+            min-width: 350px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        /* 卡片風格 */
+        .card {
+            background: #FFFFFF;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+            border-top: 4px solid #627D98;
+        }
+        .card.active-card {
+            border-top-color: #4CAF50;
+        }
+        .card-title {
             font-size: 18px;
             font-weight: bold;
-            display: inline-block;
-            margin-top: -40px;
             margin-bottom: 15px;
+            color: #243B53;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
+        
+        /* 控制元件樣式 */
         .control-group {
-            margin-bottom: 12px;
-            font-weight: bold;
-        }
-        input[type="text"] {
-            width: calc(100% - 20px);
-            padding: 8px;
-            border: 2px solid #BBDEFB;
+            margin-bottom: 15px;
+            background: #F8FAFC;
+            padding: 12px;
             border-radius: 8px;
+            border: 1px solid #E2E8F0;
+        }
+        .control-group label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        input[type="text"], input[type="number"] {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 8px;
+            border: 1px solid #CBD5E1;
+            border-radius: 6px;
             font-family: monospace;
-            margin-top: 5px;
         }
         input[type="range"] {
             width: 100%;
-            accent-color: #42A5F5;
+            accent-color: #3B82F6;
         }
-        input[type="number"] {
-            width: 70px;
-            padding: 5px;
-            border: 2px solid #90CAF9;
-            border-radius: 5px;
-            text-align: center;
-            color: #455A64;
-            font-weight: bold;
-        }
-        .checkbox-label {
+        
+        /* 開關與勾選框 */
+        .toggle-row {
             display: flex;
             align-items: center;
-            cursor: pointer;
-            margin-top: 15px;
-            background: #FFF3E0;
-            padding: 10px;
-            border-radius: 10px;
-        }
-        .btn {
-            background-color: #81C784;
-            color: white;
-            border: none;
-            border-radius: 15px;
-            padding: 12px;
-            font-size: 18px;
+            gap: 10px;
+            font-size: 14px;
             font-weight: bold;
-            width: 100%;
             cursor: pointer;
-            margin-top: 15px;
         }
-        .btn.stop { background-color: #E57373; }
-        .btn:disabled { background-color: #CFD8DC; cursor: not-allowed; }
-        
-        #canvasOutput {
-            width: 100%;
-            max-width: 640px;
-            border: 3px dashed #90CAF9;
-            border-radius: 15px;
-            margin-top: 20px;
-            background-color: #FFF;
+        .toggle-row input {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
         }
 
-        .gallery-container {
-            width: 90%;
-            max-width: 640px;
-            margin-top: 20px;
-            background-color: #FFFFFF;
-            border: 3px dashed #FFB6C1;
-            border-radius: 15px;
-            padding: 20px;
-        }
-        .gallery-title {
-            color: #E91E63;
+        /* 按鈕樣式 */
+        .btn {
+            background-color: #3B82F6;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 16px;
             font-weight: bold;
-            font-size: 18px;
-            margin-bottom: 10px;
-            text-align: center;
+            width: 100%;
+            cursor: pointer;
+            transition: all 0.2s;
         }
-        #gallery {
+        .btn:hover { background-color: #2563EB; }
+        .btn.stop { background-color: #EF4444; }
+        .btn.stop:hover { background-color: #DC2626; }
+        .btn.secondary { background-color: #10B981; margin-top: 5px; }
+        .btn:disabled { background-color: #94A3B8; cursor: not-allowed; }
+        
+        /* 畫布與相簿 */
+        #canvasOutput {
+            width: 100%;
+            border-radius: 8px;
+            background-color: #000;
+        }
+        .gallery-scroll {
             display: flex;
-            flex-wrap: wrap;
             gap: 10px;
-            justify-content: center;
+            overflow-x: auto;
+            padding-bottom: 10px;
         }
         .snap-img {
-            width: 180px;
-            border-radius: 8px;
-            border: 2px solid #FFCDD2;
+            height: 120px;
+            border-radius: 6px;
+            border: 2px solid #E2E8F0;
             cursor: pointer;
-            transition: transform 0.2s;
         }
-        .snap-img:hover {
-            transform: scale(1.05);
-            border-color: #E91E63;
-        }
+        .snap-img:hover { border-color: #3B82F6; }
         
-        /* 核心修正：使用絕對定位移出畫面，避免瀏覽器將 display:none 的影片變黑 */
-        #videoElement, #ipcamElement, #hiddenCanvas { 
-            position: absolute; 
-            top: -9999px; 
-            left: -9999px; 
-        }
+        /* 隱藏區 */
+        #videoElement, #ipcamElement, #hiddenCanvas { display: none; }
+        .folder-status { font-size: 12px; color: #10B981; margin-top: 5px; font-weight: normal; word-break: break-all; }
     </style>
 </head>
 <body>
 
-    <div class="container">
-        <div class="title-badge">✨ 雷達設定與魔法區 ✨</div>
-        
-        <div class="control-group">
-            <label>📱 鏡頭來源 (本機鏡頭填 0，平板請填 IP 網址)</label>
-            <input type="text" id="camSource" value="0" placeholder="例如: http://192.168.1.100:8080/video">
+    <div class="dashboard">
+        <!-- 左側面板：視覺畫面與相簿 -->
+        <div class="main-panel">
+            <div class="card active-card">
+                <div class="card-title">📷 實時監測畫面</div>
+                <canvas id="canvasOutput" width="640" height="480"></canvas>
+            </div>
+            
+            <div class="card">
+                <div class="card-title">📸 違規抓拍紀錄 (點圖可另存)</div>
+                <div class="gallery-scroll" id="gallery">
+                    <!-- 照片會橫向排列在這裡 -->
+                </div>
+            </div>
         </div>
 
-        <div class="control-group" style="display: flex; justify-content: space-between; align-items: center; background: #F5F5F5; padding: 10px; border-radius: 10px;">
-            <span>📏 請看畫面左上角紅線 (100像素)<br>這條紅線在現實中大約是幾公尺？</span>
-            <input type="number" id="calibInput" value="0.1" step="0.1" min="0.1">
-        </div>
+        <!-- 右側面板：控制台 -->
+        <div class="side-panel">
+            <div class="card">
+                <div class="card-title">⚙️ 系統參數設定</div>
+                
+                <div class="control-group">
+                    <label>📱 鏡頭來源 (本機填 0，平板填 IP)</label>
+                    <input type="text" id="camSource" value="0">
+                </div>
 
-        <div class="control-group">
-            <label id="speedLabel">🚨 抓拍速限: 大於 0.5 m/s (公尺/秒) 才拍照</label>
-            <input type="range" id="speedSlider" min="0.5" max="10.0" step="0.5" value="0.5">
-        </div>
-        
-        <div class="control-group">
-            <label id="trigLabel">⏱️ 防誤判 (連續超速幾張畫面才拍): 1</label>
-            <input type="range" id="trigSlider" min="1" max="15" value="1">
-        </div>
+                <div class="control-group">
+                    <label>📏 畫面左上角 100像素紅線 = 幾公尺？</label>
+                    <input type="number" id="calibInput" value="0.1" step="0.1" min="0.1">
+                </div>
 
-        <label class="checkbox-label">
-            <input type="checkbox" id="powerCheck">
-            💤 啟用睡覺模式 (關閉畫面，背景默默抓拍超省電)
-        </label>
+                <div class="control-group">
+                    <label id="speedLabel">🚨 抓拍速限: 大於 0.5 m/s 才拍</label>
+                    <input type="range" id="speedSlider" min="0.5" max="10.0" step="0.5" value="0.5">
+                </div>
+                
+                <div class="control-group">
+                    <label id="trigLabel">⏱️ 防誤判 (連續超速幾次才拍): 1</label>
+                    <input type="range" id="trigSlider" min="1" max="15" value="1">
+                </div>
 
-        <button id="startBtn" class="btn" disabled>⏳ 載入魔法核心中 (請稍候)...</button>
+                <div class="control-group">
+                    <label class="toggle-row">
+                        <input type="checkbox" id="flipCheck" checked>
+                        🪞 畫面左右翻轉 (前置鏡頭建議開啟)
+                    </label>
+                </div>
+                
+                <div class="control-group">
+                    <label class="toggle-row">
+                        <input type="checkbox" id="powerCheck">
+                        💤 節能模式 (畫面停止渲染，背景持續抓拍)
+                    </label>
+                </div>
+
+                <button id="startBtn" class="btn" disabled>⏳ 載入核心模組中...</button>
+            </div>
+
+            <div class="card">
+                <div class="card-title">📂 自動存檔設定</div>
+                <button id="setDirBtn" class="btn secondary">選擇本機儲存資料夾</button>
+                <div id="dirStatus" class="folder-status">狀態：尚未綁定 (目前使用瀏覽器預設下載)</div>
+                <label class="toggle-row" style="margin-top: 10px;">
+                    <input type="checkbox" id="autoSaveCheck" checked>
+                    啟用自動儲存功能
+                </label>
+            </div>
+        </div>
     </div>
 
-    <!-- 視覺顯示畫布 -->
-    <canvas id="canvasOutput" width="640" height="480"></canvas>
-
-    <!-- 照片紀錄區 (相簿) -->
-    <div class="gallery-container">
-        <div class="gallery-title">📸 違規抓拍紀錄區 (點擊照片即可下載)</div>
-        <div id="gallery"></div>
-    </div>
-
-    <!-- 將這些元件用 CSS 移出畫面，確保瀏覽器持續渲染 -->
+    <!-- 隱藏的工作元件 -->
     <video id="videoElement" width="640" height="480" autoplay playsinline></video>
     <img id="ipcamElement" width="640" height="480" crossorigin="anonymous">
     <canvas id="hiddenCanvas" width="640" height="480"></canvas> 
 
-    <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvReady();" type="text/javascript"></script>
+    <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvReady();"></script>
 
     <script>
         let video = document.getElementById('videoElement');
@@ -200,6 +235,10 @@
         let calibInput = document.getElementById('calibInput');
         let camSourceInput = document.getElementById('camSource');
         let powerCheck = document.getElementById('powerCheck');
+        let flipCheck = document.getElementById('flipCheck');
+        let autoSaveCheck = document.getElementById('autoSaveCheck');
+        let setDirBtn = document.getElementById('setDirBtn');
+        let dirStatus = document.getElementById('dirStatus');
         
         let streaming = false;
         let useIpCam = false;
@@ -213,26 +252,44 @@
         let smoothed_speed = 0;
         let frameCount = 0;
 
+        // 目錄操作 Handle (File System Access API)
+        let dirHandle = null;
+
+        // 設定存檔目錄
+        setDirBtn.addEventListener('click', async () => {
+            try {
+                if (!window.showDirectoryPicker) {
+                    alert("您的瀏覽器不支援此功能，請使用最新版 Chrome 或 Edge 瀏覽器。");
+                    return;
+                }
+                dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+                dirStatus.innerText = `✅ 已綁定儲存至: ${dirHandle.name} \n(超速時將自動背景寫入此資料夾)`;
+                autoSaveCheck.checked = true;
+            } catch (err) {
+                console.log('使用者取消或發生錯誤', err);
+            }
+        });
+
         function onOpenCvReady() {
             startBtn.disabled = false;
-            startBtn.innerText = '🌟 開始測速 🌟';
-            drawZzzCanvas("(๑• . •๑) 等待打開眼睛...");
+            startBtn.innerText = '▶️ 啟動系統';
+            drawZzzCanvas("SYSTEM STANDBY / 系統待機中");
         }
 
         function drawZzzCanvas(text) {
-            ctx.fillStyle = "#FFFFFF";
+            ctx.fillStyle = "#1E293B";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = "#90CAF9";
+            ctx.fillStyle = "#94A3B8";
             ctx.font = "bold 24px 'Microsoft JhengHei'";
             ctx.textAlign = "center";
             ctx.fillText(text, canvas.width/2, canvas.height/2);
         }
 
-        speedSlider.oninput = function() { document.getElementById('speedLabel').innerText = `🚨 抓拍速限: 大於 ${this.value} m/s (公尺/秒) 才拍照`; }
-        trigSlider.oninput = function() { document.getElementById('trigLabel').innerText = `⏱️ 防誤判 (連續超速幾張畫面才拍): ${this.value}`; }
+        speedSlider.oninput = function() { document.getElementById('speedLabel').innerText = `🚨 抓拍速限: 大於 ${this.value} m/s 才拍`; }
+        trigSlider.oninput = function() { document.getElementById('trigLabel').innerText = `⏱️ 防誤判 (連續超速幾次才拍): ${this.value}`; }
         powerCheck.onchange = function() {
             if(streaming && this.checked) {
-                drawZzzCanvas("( ˘ω˘ ) 睡覺模式運作中... 背景抓拍不漏接！");
+                drawZzzCanvas("💤 節能模式運作中 (背景持續抓拍)");
             }
         }
 
@@ -245,21 +302,14 @@
                     .then(function(stream) {
                         video.srcObject = stream;
                         video.play();
-                        // 確保影片開始播放後才啟動 OpenCV
-                        video.onloadeddata = function() {
-                            initOpenCVAndStart();
-                        };
+                        video.onloadeddata = function() { initOpenCVAndStart(); };
                     })
-                    .catch(err => alert("無法存取本機鏡頭！請確認網頁已允許相機權限。"));
+                    .catch(err => alert("無法存取本機鏡頭！"));
                 } else {
                     useIpCam = true;
                     ipcam.src = sourceValue + (sourceValue.includes('?') ? '&' : '?') + new Date().getTime(); 
-                    ipcam.onload = function() {
-                        if(!streaming) initOpenCVAndStart();
-                    };
-                    ipcam.onerror = function() {
-                        alert("無法讀取 IP 攝影機畫面，請確認網址是否正確！");
-                    }
+                    ipcam.onload = function() { if(!streaming) initOpenCVAndStart(); };
+                    ipcam.onerror = function() { alert("無法連線至 IP 攝影機！"); }
                 }
             } else {
                 if(!useIpCam && video.srcObject) {
@@ -268,21 +318,18 @@
                 }
                 ipcam.src = "";
                 streaming = false;
-                startBtn.innerText = '🌟 開始測速 🌟';
+                startBtn.innerText = '▶️ 啟動系統';
                 startBtn.classList.remove('stop');
-                drawZzzCanvas("(－_－) zzZ 休息中");
+                drawZzzCanvas("SYSTEM STANDBY / 系統待機中");
             }
         });
 
         function initOpenCVAndStart() {
             streaming = true;
-            startBtn.innerText = '🛑 停止測速 🛑';
+            startBtn.innerText = '⏹️ 停止系統';
             startBtn.classList.add('stop');
             
-            // 初始化 OpenCV 變數
-            if (!useIpCam) {
-                cap = new cv.VideoCapture(video);
-            }
+            if (!useIpCam) cap = new cv.VideoCapture(video);
             
             src = new cv.Mat(480, 640, cv.CV_8UC4);
             gray = new cv.Mat(480, 640, cv.CV_8UC1);
@@ -302,17 +349,19 @@
             if (!streaming) return;
             
             try {
-                // 1. 抓取影像到 src
                 if (useIpCam) {
                     hCtx.drawImage(ipcam, 0, 0, 640, 480);
                     src.data.set(hCtx.getImageData(0, 0, 640, 480).data);
                 } else {
-                    cap.read(src); // OpenCV 原生讀取法，絕不黑屏
+                    cap.read(src);
                 }
                 
-                // 2. 將原始影像畫到隱藏畫布，準備在上面畫紅框
-                cv.imshow('hiddenCanvas', src);
+                // 【左右翻轉功能】
+                if (flipCheck.checked) {
+                    cv.flip(src, src, 1);
+                }
 
+                cv.imshow('hiddenCanvas', src);
                 cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
                 
                 if (prevGray.empty()) {
@@ -336,7 +385,7 @@
                         maxArea = area;
                         maxRect = cv.boundingRect(cnt);
                     }
-                    cnt.delete(); // 防止記憶體外洩崩潰
+                    cnt.delete();
                 }
 
                 let now = performance.now();
@@ -352,7 +401,6 @@
                         let px_dist = Math.hypot(cx - prev_cx, cy - prev_cy);
                         let meters_per_px = parseFloat(calibInput.value) / 100.0;
                         let dist_meters = px_dist * meters_per_px;
-                        
                         let current_speed_ms = dist_meters / dt; 
                         smoothed_speed = (smoothed_speed * 0.7) + (current_speed_ms * 0.3);
                     }
@@ -363,12 +411,11 @@
                     let speedLimit = parseFloat(speedSlider.value);
                     isSpeeding = (display_speed > speedLimit);
 
-                    // 在隱藏畫布上畫框與時速
-                    hCtx.strokeStyle = isSpeeding ? "#FF3366" : "#42A5F5";
+                    hCtx.strokeStyle = isSpeeding ? "#EF4444" : "#10B981";
                     hCtx.lineWidth = isSpeeding ? 8 : 4; 
                     hCtx.strokeRect(maxRect.x, maxRect.y, maxRect.width, maxRect.height);
                     
-                    hCtx.fillStyle = isSpeeding ? "#FF3366" : "#42A5F5";
+                    hCtx.fillStyle = isSpeeding ? "#EF4444" : "#10B981";
                     hCtx.font = "bold 36px 'Microsoft JhengHei'";
                     hCtx.textAlign = "left";
                     hCtx.fillText(`${display_speed} m/s`, maxRect.x, maxRect.y - 15);
@@ -384,7 +431,6 @@
                         hCtx.fillText("📸 超速抓拍！", maxRect.x, maxRect.y - 60);
                         
                         addPhotoToGallery();
-                        
                         last_capture_time = now;
                         speeding_counter = 0;
                     }
@@ -394,57 +440,74 @@
                     smoothed_speed *= 0.8; 
                 }
 
-                // 將畫好的隱藏畫布顯示到前端
-                let isSleeping = powerCheck.checked;
-                if (!isSleeping) {
+                if (!powerCheck.checked) {
                     ctx.drawImage(hiddenCanvas, 0, 0);
-                    
-                    ctx.strokeStyle = "#FF3B30";
+                    ctx.strokeStyle = "#EF4444";
                     ctx.lineWidth = 5;
                     ctx.beginPath();
                     ctx.moveTo(20, 50);
                     ctx.lineTo(120, 50); 
                     ctx.stroke();
-                    
-                    ctx.fillStyle = "#FF3B30";
+                    ctx.fillStyle = "#EF4444";
                     ctx.font = "bold 18px 'Microsoft JhengHei'";
                     ctx.textAlign = "left";
-                    ctx.fillText("← 這條線是 100 像素 →", 15, 35);
+                    ctx.fillText("← 100 像素比例尺 →", 15, 35);
                 }
 
                 last_time = now;
-                
                 frameCount++;
-                if (frameCount % 3 === 0) {
-                    gray.copyTo(prevGray);
-                }
+                if (frameCount % 3 === 0) gray.copyTo(prevGray);
                 
                 requestAnimationFrame(processVideo);
 
             } catch (err) {
-                if(!powerCheck.checked) {
-                    drawZzzCanvas("讀取中...");
-                }
+                if(!powerCheck.checked) drawZzzCanvas("影像讀取異常 / 嘗試重新連接...");
                 requestAnimationFrame(processVideo);
             }
         }
 
-        function addPhotoToGallery() {
+        // 寫入檔案與相簿功能
+        async function addPhotoToGallery() {
             let dataUrl = hiddenCanvas.toDataURL('image/jpeg', 0.9);
+            let timestamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
+            let filename = `snap_${timestamp}.jpg`;
+            
+            // 1. 加到網頁相簿 (橫向顯示)
             let img = document.createElement('img');
             img.src = dataUrl;
             img.className = 'snap-img';
-            img.title = "點擊下載這張照片";
-            
-            img.onclick = function() {
-                let link = document.createElement('a');
-                let timestamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
-                link.download = `snap_${timestamp}.jpg`;
-                link.href = dataUrl;
-                link.click();
-            };
-            
+            img.title = "點擊手動下載";
+            img.onclick = () => { fallbackDownload(dataUrl, filename); };
             gallery.prepend(img);
+
+            // 2. 判斷自動存檔機制
+            if (autoSaveCheck.checked) {
+                if (dirHandle) {
+                    try {
+                        // 背景無縫直接寫入本機資料夾！
+                        const res = await fetch(dataUrl);
+                        const blob = await res.blob();
+                        const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
+                        const writable = await fileHandle.createWritable();
+                        await writable.write(blob);
+                        await writable.close();
+                        console.log("照片已安全寫入資料夾:", filename);
+                    } catch (e) {
+                        console.error('寫入失敗，改用傳統下載', e);
+                        fallbackDownload(dataUrl, filename);
+                    }
+                } else {
+                    // 若有打勾但沒綁定，則觸發瀏覽器預設下載
+                    fallbackDownload(dataUrl, filename);
+                }
+            }
+        }
+
+        function fallbackDownload(dataUrl, filename) {
+            let link = document.createElement('a');
+            link.download = filename;
+            link.href = dataUrl;
+            link.click();
         }
     </script>
 </body>
